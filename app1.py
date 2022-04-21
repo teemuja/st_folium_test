@@ -8,19 +8,50 @@ import h3
 
 # title
 st.title('H3 hexes')
-st.caption('From DB to map')
+st.caption('Testing with streamlit-folium..')
 
-# load data.. replace by db conn
-df = pd.read_csv('pkstest.csv', usecols=['h3_07','muutos','geometry'])
-df.rename(columns={'h3_07':'hex_id'}, inplace=True)
+# load data.. replace with db conn
+@st.cache()
+def data_load():
+    df = pd.read_csv('pkstest.csv', usecols=['h3_07','muutos','geometry'])
+    df.rename(columns={'h3_07':'hex_id'}, inplace=True)
+    return df
 
-# function for h3
-def get_h3_from_ui(map_data):
-    # get bbox from UI..
+# map object def
+def map_object(center_lat=60.2,center_lng=24.9,zoom=10):
+    m = folium.Map(location=[center_lat, center_lng], tiles='cartodbpositron', zoom_start=zoom, control_scale=True)
+    return m
+
+# THE MAP
+if "p1_lat" not in st.session_state:
+    # initial empty map
+    m = map_object()
+    map_data = st_folium(m, width=900, height=700)
     p1 = (map_data["bounds"]['_southWest']['lat'], map_data["bounds"]['_southWest']['lng'])
     p2 = (map_data["bounds"]['_northEast']['lat'], map_data["bounds"]['_southWest']['lng'])
     p3 = (map_data["bounds"]['_northEast']['lat'], map_data["bounds"]['_northEast']['lng'])
     p4 = (map_data["bounds"]['_southWest']['lat'], map_data["bounds"]['_northEast']['lng'])
+    center_lat = p2[0] - (p2[0] - p1[0]) / 2
+    center_lng = p3[1] - (p3[1] - p2[1]) / 2
+    zoom = map_data['zoom']
+    # store map values as numbers
+    st.session_state.p1_lat = map_data["bounds"]['_southWest']['lat']
+    st.session_state.p1_lng = map_data["bounds"]['_southWest']['lng']
+    st.session_state.p2_lat = map_data["bounds"]['_northEast']['lat']
+    st.session_state.p2_lng = map_data["bounds"]['_southWest']['lng']
+    st.session_state.p3_lat = map_data["bounds"]['_northEast']['lat']
+    st.session_state.p3_lng = map_data["bounds"]['_northEast']['lng']
+    st.session_state.p4_lat = map_data["bounds"]['_southWest']['lat']
+    st.session_state.p4_lng = map_data["bounds"]['_northEast']['lng']
+    st.session_state.c_lat = center_lat
+    st.session_state.c_lng = center_lng
+    st.session_state.zoom = zoom
+else:
+    # get new bounds from session_state
+    p1 = (st.session_state.p1_lat, st.session_state.p1_lng)
+    p2 = (st.session_state.p2_lat, st.session_state.p2_lng)
+    p3 = (st.session_state.p3_lat, st.session_state.p3_lng)
+    p4 = (st.session_state.p4_lat, st.session_state.p4_lng)
     # create hexes on it..
     geoJson = {'type': 'Polygon',
                'coordinates': [[[p1[0], p1[1]],
@@ -29,44 +60,45 @@ def get_h3_from_ui(map_data):
                                 [p4[0], p4[1]]]]}
     hex_list = list(h3.polyfill(geoJson, 7))
     empty_hexes = pd.DataFrame(hex_list, columns=['hex_id'])
-    df_hex = pd.merge(empty_hexes, df, on='hex_id')
+    data = data_load()
+    df_hex = pd.merge(empty_hexes, data, on='hex_id')
     gdf_hex = gpd.GeoDataFrame(df_hex, geometry=gpd.GeoSeries.from_wkt(df_hex['geometry'], crs=4326))
-    return gdf_hex
+    # new map with new values from session_state
+    center_lat = st.session_state.c_lat
+    center_lng = st.session_state.c_lng
+    zoom = st.session_state.zoom
+    m = map_object(center_lat,center_lng,zoom)
+    # add choropleth
+    choro = folium.Choropleth(geo_data=gdf_hex.to_json(),
+                              name='muutos',
+                              data=gdf_hex,
+                              columns=['hex_id', 'muutos'],
+                              key_on='feature.properties.hex_id',
+                              fill_color='YlOrRd',
+                              fill_opacity=0.6,
+                              line_opacity=0.9,
+                              legend_name="Population change"
+                              ).add_to(m)
+    map_data = st_folium(m, key="whatever", width=900, height=700)
+    # update new map values
+    p1 = (map_data["bounds"]['_southWest']['lat'], map_data["bounds"]['_southWest']['lng'])
+    p2 = (map_data["bounds"]['_northEast']['lat'], map_data["bounds"]['_southWest']['lng'])
+    p3 = (map_data["bounds"]['_northEast']['lat'], map_data["bounds"]['_northEast']['lng'])
+    p4 = (map_data["bounds"]['_southWest']['lat'], map_data["bounds"]['_northEast']['lng'])
+    center_lat = p2[0] - (p2[0]-p1[0])/2
+    center_lng = p3[1] - (p3[1]-p2[1])/2
+    zoom = map_data['zoom']
+    # replace session_states for the new rerun
+    st.session_state.p1_lat = map_data["bounds"]['_southWest']['lat']
+    st.session_state.p1_lng = map_data["bounds"]['_southWest']['lng']
+    st.session_state.p2_lat = map_data["bounds"]['_northEast']['lat']
+    st.session_state.p2_lng = map_data["bounds"]['_southWest']['lng']
+    st.session_state.p3_lat = map_data["bounds"]['_northEast']['lat']
+    st.session_state.p3_lng = map_data["bounds"]['_northEast']['lng']
+    st.session_state.p4_lat = map_data["bounds"]['_southWest']['lat']
+    st.session_state.p4_lng = map_data["bounds"]['_northEast']['lng']
+    st.session_state.c_lat = center_lat
+    st.session_state.c_lng = center_lng
+    st.session_state.zoom = zoom
 
-# THE MAP
-m = folium.Map(location=[60.2, 24.9], tiles='cartodbpositron', zoom_start=10, control_scale=True)
-map_data = st_folium(m, key="choro", width=900, height=700)
-gdf_hex = get_h3_from_ui(map_data)
-# choropleth test
-choro = folium.Choropleth(geo_data=gdf_hex.to_json(),
-                          name='muutos',
-                          data=gdf_hex,
-                          columns=['hex_id', 'muutos'],
-                          key_on='feature.properties.hex_id',
-                          fill_color='YlOrRd',
-                          fill_opacity=0.6,
-                          line_opacity=0.9,
-                          legend_name="Population change"
-                          ).add_to(m)
 
-# geojson test
-style_function = lambda x: {'fillColor': '#ffffff',
-                            'color':'#000000',
-                            'fillOpacity': 0.1,
-                            'weight': 0.1}
-highlight_function = lambda x: {'fillColor': '#000000',
-                                'color':'#000000',
-                                'fillOpacity': 0.50,
-                                'weight': 0.1}
-H3s = folium.features.GeoJson(
-    gdf_hex,
-    style_function=style_function,
-    control=False,
-    highlight_function=highlight_function,
-    tooltip=folium.features.GeoJsonTooltip(
-        fields=['hex_id', 'muutos'],
-        style=("background-color: white; color: #333333; font-family: arial; font-size: 12px; padding: 10px;")
-    )
-)
-m.add_child(H3s)
-map_data = st_folium(m, key="choro", width=900, height=700)
