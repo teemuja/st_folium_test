@@ -26,13 +26,13 @@ def map_object(center_lat=60.2,center_lng=24.9,zoom=10):
     return m
 
 def set_session_bounds(map_data):
-    print(map_data["bounds"])
-    if ~isinstance(map_data['bounds'],list): # checking if the map is rendered
+    if st.session_state["start"]: # checking if the map is rendered
         bounds = list(map_data["bounds"].values())
         bounds = [bounds[0]['lng'], bounds[0]['lat'], bounds[1]['lng'], bounds[1]['lat']]
         center_lat = (bounds[1] + bounds[3]) / 2
         center_lng = (bounds[0] + bounds[2]) / 2
         zoom = map_data['zoom']
+
         geoJson = json.dumps({
             'type': 'Polygon',
             'coordinates': [[
@@ -54,19 +54,20 @@ map_data = st_folium(m, width=900, height=700)
 #%%
 if "start" not in st.session_state:
     # initializing the state variables:
-    st.session_state["start"] = True
     st.session_state["bounding_geom"] = ''
     st.session_state["c_lat"] = 0
     st.session_state["c_lng"] = 0
     st.session_state["zoom"] = 0
-    set_session_bounds(map_data)
+    st.session_state["start"] = True
+
 else:
     # creating map based on values
-
+    set_session_bounds(map_data)
     m = map_object(
         st.session_state.c_lat,
         st.session_state.c_lng,
         st.session_state.zoom)
+    
     hex_list = list(
         h3.polyfill(
             json.loads(st.session_state["bounding_geom"]), 
@@ -87,8 +88,7 @@ else:
         st.session_state["c_lat"],
         st.session_state["c_lng"],
         st.session_state["zoom"])
-    # # add choropleth
-    print(empty_hexes['hex_id'].to_list())
+    # add choropleth
     choro = folium.Choropleth(
         geo_data=gdf_hex.to_json(),
         name='muutos',
@@ -102,7 +102,3 @@ else:
         ).add_to(m)
     map_data = st_folium(m, key="whatever", width=900, height=700)
     set_session_bounds(map_data)
-
-
-
-# %%
